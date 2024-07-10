@@ -44,38 +44,22 @@ class DataTransformation:
 
     def get_data_transformer_object(self):
         try:
-            columns_for_dummy = ['Reason for Absence']
-            num_columns_to_scale = ['Month Value', 'Transportation Expense', 'Age', 'Body Mass Index', 'Education', 'Children', 'Pets']
-            # numerical_features = ['reading_score', 'writing_score']
-            # categorical_features = ['gender', 'race_ethnicity', 'parental_level_of_education', 'lunch', 'test_preparation_course']
-            num_pipeline = Pipeline(
+            columns_to_scale = ['Month Value', 'Transportation Expense', 'Age', 'Body Mass Index', 'Education', 'Children', 'Pets']
+            
+            pipeline = Pipeline(
                 steps=[
                     ("imputer", SimpleImputer(strategy="median")),
-                    ("scaler", CustomScaler())
-                ]
-            )
-            cat_pipeline = Pipeline(
-                steps=[
-                    ("imputer", SimpleImputer(strategy="most_frequent")),
-                     ("one_hot_encoder", OneHotEncoder),
-                     ("scaler", StandardScaler(with_mean=False))
-                    
+                    ("scaler", CustomScaler(columns=columns_to_scale))
                 ]
             )
 
             logging.info("Pipeline Created")
 
-            preprocessor = ColumnTransformer(
-                [
-                ("num_pipeline", num_pipeline,numerical_features),
-                ("cat_pipline", cat_pipeline, categorical_features)
-                ]
-            )
-
-            return preprocessor
+            return pipeline
 
         except Exception as e:
             raise CustomException(e, sys)
+
         
     def initiate_data_transformation(self, train_path, test_path):
         try:
@@ -84,17 +68,127 @@ class DataTransformation:
 
             logging.info("Reading train and test data - Done")
 
+            logging.info("Starting to transform 'Reason Column'")
+
+            reason_column_train = pd.get_dummies(train_df['Reason for Absence'], drop_first=True).astype(int)
+            reason_column_test = pd.get_dummies(test_df['Reason for Absence'], drop_first=True).astype(int)
+
+            train_df = train_df.drop(['Reason for Absence'], axis=1)
+            test_df = test_df.drop(['Reason for Absence'], axis=1)
+
+            reason_diseases_train = reason_column_train.loc[:,:14].max(axis=1)
+            reason_pregnancy_train = reason_column_train.loc[:,15:17].max(axis=1)
+            reason_health_symptomps_train = reason_column_train.loc[:,18:21].max(axis=1)
+            reason_lite_train = reason_column_train.loc[:,22:].max(axis=1)
+
+            reason_diseases_test = reason_column_test.loc[:,:14].max(axis=1)
+            reason_pregnancy_test = reason_column_test.loc[:,15:17].max(axis=1)
+            reason_health_symptomps_test = reason_column_test.loc[:,18:21].max(axis=1)
+            reason_lite_test = reason_column_test.loc[:,22:].max(axis=1)
+
+            train_df = pd.concat([train_df,reason_diseases_train,reason_pregnancy_train,reason_health_symptomps_train,reason_lite_train], axis=1)
+            test_df = pd.concat([test_df,reason_diseases_test,reason_pregnancy_test,reason_health_symptomps_test,reason_lite_test], axis=1)
+            columns_names = ['Date', 'Transportation Expense', 'Distance to Work', 'Age',
+                            'Daily Work Load Average', 'Body Mass Index', 'Education',
+                            'Children', 'Pets', 'Absenteeism Time in Hours', 'Reasons_diseases', 
+                            'Reasons_pregnancy','Reasons_health_symptomps','Reasons_light']
+            train_df.columns = columns_names
+            test_df.columns = columns_names
+            reordered_columns_names = ['Reasons_diseases', 'Reasons_pregnancy','Reasons_health_symptomps',
+                                        'Reasons_light','Date', 'Transportation Expense', 'Distance to Work', 
+                                        'Age', 'Daily Work Load Average', 'Body Mass Index', 'Education',
+                                        'Children', 'Pets', 'Absenteeism Time in Hours']
+            
+            train_df = train_df[reordered_columns_names]
+            test_df = test_df[reordered_columns_names]
+
+            logging.info("Finished with transforming 'Reason Column'")
+
+            logging.info("Starting to transform 'Date' column")
+
+            train_df['Date'] = pd.to_datetime(train_df['Date'], format='%d/%m/%Y')
+            test_df['Date'] = pd.to_datetime(test_df['Date'], format='%d/%m/%Y')
+
+            list_month = []
+
+            for date in train_df['Date']:
+                list_month.append(date.month)
+
+            train_df['Month Value'] = list_month
+
+            list_month = []
+            for date in test_df['Date']:
+                list_month.append(date.month)
+
+            test_df['Month Value'] = list_month
+
+            list_days_of_week = []
+            for date in train_df['Date']:
+                list_days_of_week.append(date.weekday())
+
+            train_df['Day of the week'] = list_days_of_week
+
+            list_days_of_week = []
+            for date in test_df['Date']:
+                list_days_of_week.append(date.weekday())
+
+            test_df['Day of the week'] = list_days_of_week
+
+            train_df = train_df.drop(['Date'], axis=1)
+            test_df = test_df.drop(['Date'], axis=1)
+
+            columns_reordered = ['Reasons_diseases', 'Reasons_pregnancy',
+                                'Reasons_health_symptomps', 'Reasons_light', 'Month Value',
+                                'Day of the week', 'Transportation Expense', 'Distance to Work', 'Age',
+                                'Daily Work Load Average', 'Body Mass Index', 'Education',
+                                'Children', 'Pets', 'Absenteeism Time in Hours']
+            
+            train_df=train_df[columns_reordered]
+            test_df=test_df[columns_reordered]
+
+            logging.info("Finished with transforming 'Date'")
+
+            logging.info("Starting to transform 'Education' column")
+
+            train_df['Education'] = train_df['Education'].map({1:0, 2:1, 3:1, 4:1})
+            test_df['Education'] = test_df['Education'].map({1:0, 2:1, 3:1, 4:1})
+
+            logging.info("Splitting Inputs and Targets started")
+
+
+            
+            target_feature_train_df = np.where(train_df['Absenteeism Time in Hours'] > train_df['Absenteeism Time in Hours'].median(), 1, 0)
+            train_df['Excessive Absenteeism'] = target_feature_train_df
+            target_feature_test_df = np.where(test_df['Absenteeism Time in Hours'] > test_df['Absenteeism Time in Hours'].median(), 1, 0)
+            test_df['Excessive Absenteeism'] = target_feature_test_df 
+
+            input_feature_train_df=train_df.drop(columns=['Absenteeism Time in Hours'],axis=1)
+            input_feature_test_df=test_df.drop(columns=['Absenteeism Time in Hours'],axis=1)
+
+            # unscaled_columns_train = train_df.iloc[:, :4]
+            # unscaled_columns_test= test_df.iloc[:, :4]
+            # columns_to_scale = ['Month Value', 'Transportation Expense', 'Age', 'Body Mass Index', 'Education', 'Children', 'Pets']
+
+            # scaler = CustomScaler(columns=columns_to_scale)
+
+            # input_feature_train_array = scaler.fit_transform(input_feature_train_df)
+            # input_feature_test_array = scaler.transform(input_feature_test_df)
+
+            # train_array = np.c_[
+            #     unscaled_columns_train, input_feature_train_array, np.array(target_feature_train_df)
+            # ]
+
+            # test_array = np.c_[
+            #     unscaled_columns_test, input_feature_test_array, np.array(target_feature_test_df)
+            # ]
+
+            # Get the preprocessing object
             preprocessing_obj = self.get_data_transformer_object()
-            target_column_name = "math_score"
-            numerical_features = ['reading_score', 'writing_score']
 
-            input_feature_train_df=train_df.drop(columns=[target_column_name],axis=1)
-            target_feature_train_df = train_df[target_column_name]
-
-            input_feature_test_df=test_df.drop(columns=[target_column_name],axis=1)
-            target_feature_test_df = test_df[target_column_name]
-
+            # Fit and transform the training data
             input_feature_train_array = preprocessing_obj.fit_transform(input_feature_train_df)
+
+            # Transform the test data
             input_feature_test_array = preprocessing_obj.transform(input_feature_test_df)
 
             train_array = np.c_[
@@ -105,14 +199,15 @@ class DataTransformation:
                 input_feature_test_array, np.array(target_feature_test_df)
             ]
 
-            save_object (
-                file_path = self.data_transformation_config.preprocessor_obj_file,
-                obj = preprocessing_obj
+            save_object(
+                file_path=self.data_transformation_config.preprocessor_obj_file,
+                obj=preprocessing_obj
             )
 
             return (train_array, test_array, self.data_transformation_config.preprocessor_obj_file)
+        
 
-
-            
         except Exception as e:
-            raise CustomException(e,sys)
+            raise CustomException(e, sys)
+        
+
