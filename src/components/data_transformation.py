@@ -17,25 +17,27 @@ from src.utils import save_object
 class DataTransformationConfig:
     preprocessor_obj_file = os.path.join("artifacts", 'preprocessor.pickle')
 
-class CustomScaler(BaseEstimator,TransformerMixin): 
-    
-    def __init__(self,columns,copy=True,with_mean=True,with_std=True):
-        self.scaler = StandardScaler(copy=copy,with_mean=with_mean,with_std=with_std)
-        self.columns = columns
-        self.mean_ = None
-        self.var_ = None
+# class CustomScaler(BaseEstimator, TransformerMixin): 
+#     def __init__(self, columns, copy=True, with_mean=True, with_std=True):
+#         self.scaler = StandardScaler(copy=copy, with_mean=with_mean, with_std=with_std)
+#         self.columns = columns
+#         self.copy = copy
+#         self.with_mean = with_mean
+#         self.with_std = with_std
+#         self.mean_ = None
+#         self.var_ = None
 
-    def fit(self, X, y=None):
-        self.scaler.fit(X[self.columns], y)
-        self.mean_ = np.array(np.mean(X[self.columns]))
-        self.var_ = np.array(np.var(X[self.columns]))
-        return self
+#     def fit(self, X, y=None):
+#         self.scaler.fit(X[self.columns], y)
+#         self.mean_ = np.array(np.mean(X[self.columns]))
+#         self.var_ = np.array(np.var(X[self.columns]))
+#         return self
 
-    def transform(self, X, y=None, copy=None):
-        init_col_order = X.columns
-        X_scaled = pd.DataFrame(self.scaler.transform(X[self.columns]), columns=self.columns)
-        X_not_scaled = X.loc[:,~X.columns.isin(self.columns)]
-        return pd.concat([X_not_scaled, X_scaled], axis=1)[init_col_order]
+#     def transform(self, X, y=None, copy=None):
+#         init_col_order = X.columns
+#         X_scaled = pd.DataFrame(self.scaler.transform(X[self.columns]), columns=self.columns)
+#         X_not_scaled = X.loc[:, ~X.columns.isin(self.columns)]
+#         return pd.concat([X_not_scaled, X_scaled], axis=1)[init_col_order]
     
     
 class DataTransformation:
@@ -45,20 +47,28 @@ class DataTransformation:
     def get_data_transformer_object(self):
         try:
             columns_to_scale = ['Month Value', 'Transportation Expense', 'Age', 'Body Mass Index', 'Education', 'Children', 'Pets']
-            
-            pipeline = Pipeline(
-                steps=[
-                    ("imputer", SimpleImputer(strategy="median")),
-                    ("scaler", CustomScaler(columns=columns_to_scale))
+            all_columns = ['Reasons_diseases', 'Reasons_pregnancy', 'Reasons_health_symptomps', 'Reasons_light', 
+                           'Month Value', 'Day of the week', 'Transportation Expense', 'Distance to Work', 
+                           'Age', 'Daily Work Load Average', 'Body Mass Index', 'Education', 'Children', 'Pets']
+
+            unscaled_columns = [col for col in all_columns if col not in columns_to_scale]
+
+            pipeline = ColumnTransformer(
+                transformers=[
+                    ("num", Pipeline([
+                        ("imputer", SimpleImputer(strategy="median")),
+                        ("scaler", StandardScaler())
+                    ]), columns_to_scale),
+                    ("cat", "passthrough", unscaled_columns)
                 ]
             )
 
             logging.info("Pipeline Created")
 
             return pipeline
-
         except Exception as e:
-            raise CustomException(e, sys)
+            raise CustomException(e,sys)
+
 
         
     def initiate_data_transformation(self, train_path, test_path):
@@ -186,6 +196,7 @@ class DataTransformation:
             preprocessing_obj = self.get_data_transformer_object()
 
             # Fit and transform the training data
+            
             input_feature_train_array = preprocessing_obj.fit_transform(input_feature_train_df)
 
             # Transform the test data
